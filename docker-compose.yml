@@ -1,0 +1,96 @@
+services:
+  pg_loader:
+    build: ./pg_loader_module
+    container_name: pg_loader
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./input:/input
+      - ./reports:/reports
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+      - DB_NAME=postgres
+      - IS_DOCKER=true
+
+  postgres:
+      image: postgres:18-alpine
+      container_name: postgres
+      restart: always
+      healthcheck:
+        test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+        interval: 10s   
+        timeout: 5s   
+        retries: 5   
+        start_period: 10s 
+
+      environment:
+        - POSTGRES_USER=postgres
+        - POSTGRES_PASSWORD=password
+        - POSTGRES_DB=postgres
+      ports:
+        - "5432:5432"
+      volumes:
+        - postgres_data:/var/lib/postgresql
+        - ./postgres/01_schema.sql:/docker-entrypoint-initdb.d/1-schema.sql
+        - ./postgres/02_data.sql:/docker-entrypoint-initdb.d/2-data.sql
+      command: >
+        postgres
+        -c shared_preload_libraries=pg_stat_statements 
+        -c pg_stat_statements.track=all 
+        -c pg_stat_statements.max=10000
+  pg_exporter:
+    image: ghcr.io/nbari/pg_exporter:latest
+    container_name: pg_exporter
+    environment:
+      - PG_EXPORTER_DSN=postgresql://postgres:password@postgres:5432/postgres?sslmode=disable
+    ports:
+      - "9432:9432"
+    command:
+        --collector.locks
+        --collector.database
+        --collector.stat
+        --collector.replication
+        --collector.index
+        --collector.statements
+        --collector.exporter
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    depends_on:
+      - prometheus
+    volumes:
+      - grafana_data:/var/lib/grafana 
+      - ./grafana_configs/datasource.yml:/etc/grafana/provisioning/datasources/datasource.yml
+      - ./grafana_configs/dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml
+      - ./grafana_configs/24298_rev2.json:/etc/grafana/provisioning/dashboards/24298_rev2.json
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  grafana_data:
+  prometheus_data:
