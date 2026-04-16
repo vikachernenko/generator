@@ -1,0 +1,28 @@
+{
+  "database": {
+    "connectionString": "postgresql://postgres:password@postgres:5432/postgres?sslmode=disable"
+  },
+  "load": {
+    "executor": "ramping-vus",
+    "startVUs": 10,
+    "stages": [
+      { "duration": "15s", "target": 20 },
+      { "duration": "90s", "target": 100 },
+      { "duration": "15s", "target": 0 }
+    ],
+    "gracefulRampDown": "10s"
+  },
+  "thinkTime": {
+    "min": 0.05,
+    "max": 0.15
+  },
+  "weights": {
+    "select": 45,
+    "update": 35,
+    "insert": 20
+  },
+  "thresholds": {
+    "checks": ["rate>0.95"],
+    "iteration_duration": ["p(95)<180", "avg<130"]
+  }
+}
